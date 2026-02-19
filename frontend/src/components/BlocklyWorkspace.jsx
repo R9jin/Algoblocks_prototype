@@ -214,6 +214,8 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
         this.nameDB_.setVariableMap(workspace.getVariableMap());
         this.definitions_ = Object.create(null);
         this.functionNames_ = Object.create(null);
+
+        this.isInitialized = true;
       };
 
       pythonGenerator.finish = function(code) {

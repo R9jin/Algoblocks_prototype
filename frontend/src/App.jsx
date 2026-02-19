@@ -19,7 +19,7 @@ export default function App() {
       const response = await fetch('/api/analyze', { 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: generatedCode })
+          body: JSON.stringify({ code: pythonCode })
       });
 
       const data = await response.json();
