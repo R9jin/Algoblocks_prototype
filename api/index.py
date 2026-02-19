@@ -136,6 +136,7 @@ class ComplexityAnalyzer(ast.NodeVisitor):
         return f"O(n^{self.max_complexity})"
 
 @app.post("/api/analyze")
+@app.post("/analyze") # 🔥 ADD THIS: Fallback in case Vercel strips the path
 def analyze_complexity(payload: CodePayload):
     try:
         tree = ast.parse(payload.code)
@@ -150,6 +151,7 @@ def analyze_complexity(payload: CodePayload):
         return {"status": "error", "total": "Error", "lines": []}
 
 @app.post("/api/run")
+@app.post("/run")     # 🔥 ADD THIS: Fallback in case Vercel strips the path
 def run_code(payload: CodePayload):
     old_stdout = sys.stdout
     redirected_output = sys.stdout = StringIO()
