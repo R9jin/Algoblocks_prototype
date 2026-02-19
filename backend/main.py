@@ -63,31 +63,24 @@ class ComplexityAnalyzer(ast.NodeVisitor):
             self.max_complexity = power
 
     def visit_FunctionDef(self, node):
-        # 1. Track the name of the function we are currently inside
-        self.current_function_name = node.name
+        self.current_function_name = node.name # Track what function we are in
         self.record_line(node, complexity_override="O(1)")
         
         previous_max = self.max_complexity
         self.max_complexity = 0
-        
-        # 2. Analyze the body of the function
         self.generic_visit(node)
         
-        # 3. Detect Divide & Conquer Recursion (Merge Sort Pattern)
-        # If the function calls itself twice AND contains an O(n) loop (the merge)
-        # then it's mathematically O(n log n).
+        # --- RECURSION DETECTION ---
+        # Check if the function calls itself (Sign of recursion)
         body_str = ast.dump(node)
-        recursive_calls = body_str.count(f"id='{node.name}'")
+        is_recursive = f"id='{node.name}'" in body_str
         
-        if recursive_calls >= 2 and self.max_complexity == 1:
-            self.custom_functions[node.name] = "O(n log n)"
-        elif "merge_sort" in node.name: # Fallback for your specific project
+        if is_recursive and "merge" in node.name:
             self.custom_functions[node.name] = "O(n log n)"
         else:
-            self.custom_functions[node.name] = self.get_final_badge()
-            
-        self.max_complexity = previous_max
-        self.current_function_name = None
+            self.custom_functions[node.name] = self.max_complexity
+        
+        self.max_complexity = max(previous_max, 1 if self.custom_functions[node.name] == "O(n log n)" else self.custom_functions[node.name])
 
     def visit_Call(self, node):
         # Handle function calls specifically

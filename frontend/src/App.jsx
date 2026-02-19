@@ -96,33 +96,37 @@ export default function App() {
       }
     };
 
-  const handleTemplateSelect = async (e) => {
-    const templatePath = e.target.value;
-    if (!templatePath) return; 
+    // Update handleTemplateSelect in App.jsx
+    const handleTemplateSelect = async (e) => {
+      const templatePath = e.target.value;
+      if (!templatePath) return; 
 
-    const confirmLoad = window.confirm("⚠️ Loading a template will overwrite your current workspace. Do you want to continue?");
-    
-    if (!confirmLoad) {
-      e.target.value = ""; 
-      return;
-    }
-
-    try {
-      const response = await fetch(`/templates/${templatePath}.json`);
-      if (!response.ok) throw new Error("Template not found");
-      
-      const json = await response.json();
-      
-      if (workspaceRef.current) {
-        workspaceRef.current.loadTemplate(json);
+      const confirmLoad = window.confirm("⚠️ Loading a template will overwrite your current workspace. Do you want to continue?");
+      if (!confirmLoad) {
+        e.target.value = ""; 
+        return;
       }
-    } catch (error) {
-      console.error("Failed to load template", error);
-      alert(`Could not find the file: /templates/${templatePath}.json`);
-    }
-    
-    e.target.value = ""; 
-  };
+
+      try {
+        const response = await fetch(`/templates/${templatePath}.json`);
+        if (!response.ok) throw new Error("Template not found");
+        
+        const json = await response.json();
+        
+        if (workspaceRef.current) {
+          // 1. Load the template and get the code back
+          const newCode = workspaceRef.current.loadTemplate(json);
+          
+          // 2. Manually trigger the analysis for the new template
+          handleBlocklyChange(json, newCode); 
+        }
+      } catch (error) {
+        console.error("Failed to load template", error);
+        alert(`Could not find the file: /templates/${templatePath}.json`);
+      }
+      
+      e.target.value = ""; 
+    };
 
   // --- NEW: THEME SWITCHER LOGIC ---
   const handleThemeChange = (e) => {

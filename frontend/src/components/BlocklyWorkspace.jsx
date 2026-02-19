@@ -167,7 +167,10 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
       if (workspace.current) {
         workspace.current.clear();
         Blockly.serialization.workspaces.load(json, workspace.current);
+        // Return the new code so App.jsx can analyze it immediately
+        return pythonGenerator.workspaceToCode(workspace.current);
       }
+      return "";
     },
     setTheme: (themeName) => {
       if (workspace.current) {
@@ -249,22 +252,22 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
 
     // --- FIX: Add this corrected version to BlocklyWorkspace.jsx ---
 
-      pythonGenerator.init = function(workspace) {
-      // 1. THIS IS THE MISSING LINE:
-      // It initializes the variable database that the generator uses internally.
-      this.variableDB_ = new Blockly.Names(this.RESERVED_WORDS_);
-      
-      // 2. Setup the name database for general names
-      this.nameDB_ = new Blockly.Names(this.RESERVED_WORDS_);
-      this.nameDB_.setVariableMap(workspace.getVariableMap());
+    pythonGenerator.init = function(workspace) {
+    // 1. THIS IS THE MISSING LINE:
+    // It initializes the variable database that the generator uses internally.
+    this.variableDB_ = new Blockly.Names(this.RESERVED_WORDS_);
+    
+    // 2. Setup the name database for general names
+    this.nameDB_ = new Blockly.Names(this.RESERVED_WORDS_);
+    this.nameDB_.setVariableMap(workspace.getVariableMap());
 
-      // 3. Initialize definitions and function names
-      this.definitions_ = Object.create(null);
-      this.functionNames_ = Object.create(null);
+    // 3. Initialize definitions and function names
+    this.definitions_ = Object.create(null);
+    this.functionNames_ = Object.create(null);
 
-      // CRITICAL: We still DO NOT call "this.variableDB_.reset()". 
-      // Leaving that out is what actually stops the "global" and "arr = None" lines.
-    };
+    // CRITICAL: We still DO NOT call "this.variableDB_.reset()". 
+    // Leaving that out is what actually stops the "global" and "arr = None" lines.
+  };
 
         // Add this right after the init override
     pythonGenerator.finish = function(code) {
