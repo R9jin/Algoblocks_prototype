@@ -1,7 +1,3 @@
 fastapi
 uvicorn
 pydantic
-sqlalchemy           <-- The ORM (Database Manager)
-psycopg2-binary      <-- The PostgreSQL Driver
-passlib[bcrypt]      <-- For Hashing Passwords
-python-jose[cryptography] <-- For Login Tokens

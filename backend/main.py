@@ -1,9 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from database import get_db
-import models
-import sys          # <--- ADDED: Required for stdout manipulation
-from io import StringIO # <--- ADDED: Required for capturing print output
+from fastapi import FastAPI, HTTPException # Remove Depends
+# from sqlalchemy.orm import Session # DELETE THIS
+# from database import get_db # DELETE THIS
+# import models # DELETE THIS
+import sys
+from io import StringIO
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ast
@@ -191,22 +191,22 @@ def run_code(payload: CodePayload):
 
     return {"status": "success", "output": output}
 
-@app.post("/api/projects/")
-def create_project(title: str, blocks: dict, db: Session = Depends(get_db)):
-    """
-    Saves a student's algorithm to the database.
-    """
-    # ⚠️ In real life, get 'user_id' from the logged-in token
-    new_project = models.Project(
-        title=title, 
-        data=blocks,  # We dump the raw JSON here
-        owner_id=1    # Hardcoded for prototype
-    )
-    db.add(new_project)
-    db.commit()
-    db.refresh(new_project)
-    return {"status": "success"}
+# @app.post("/api/projects/")
+# def create_project(title: str, blocks: dict, db: Session = Depends(get_db)):
+#     """
+#     Saves a student's algorithm to the database.
+#     """
+#     # ⚠️ In real life, get 'user_id' from the logged-in token
+#     new_project = models.Project(
+#         title=title, 
+#         data=blocks,  # We dump the raw JSON here
+#         owner_id=1    # Hardcoded for prototype
+#     )
+#     db.add(new_project)
+#     db.commit()
+#     db.refresh(new_project)
+#     return {"status": "success"}
 
-@app.get("/api/projects/")
-def get_projects(db: Session = Depends(get_db)):
-    return db.query(models.Project).all()
+# @app.get("/api/projects/")
+# def get_projects(db: Session = Depends(get_db)):
+#     return db.query(models.Project).all()
