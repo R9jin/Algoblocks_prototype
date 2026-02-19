@@ -7,7 +7,6 @@ import ast
 
 app = FastAPI()
 
-# --- CORS SETUP ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,7 +18,6 @@ app.add_middleware(
 class CodePayload(BaseModel):
     code: str
 
-# --- UPDATED COMPLEXITY ANALYZER ---
 class ComplexityAnalyzer(ast.NodeVisitor):
     def __init__(self, source_code):
         self.source_lines = source_code.splitlines()
@@ -28,7 +26,8 @@ class ComplexityAnalyzer(ast.NodeVisitor):
         self.max_complexity = 0 
         self.has_sort = False
         self.custom_functions = {} 
-    
+        self.current_function_name = None  # 🔥 FIX: Prevents AttributeError
+
     def get_code_snippet(self, node):
         if hasattr(node, 'lineno'):
             line = self.source_lines[node.lineno - 1]
@@ -36,10 +35,10 @@ class ComplexityAnalyzer(ast.NodeVisitor):
         return "Code Block"
 
     def get_color(self, complexity_str):
-        if "n^2" in complexity_str or "n^3" in complexity_str: return "#e74c3c" # RED
-        if "log" in complexity_str: return "#2980b9" # BLUE
-        if "O(n)" in complexity_str: return "#e67e22" # ORANGE
-        return "#27ae60" # GREEN
+        if "n^2" in complexity_str or "n^3" in complexity_str: return "#e74c3c"
+        if "log" in complexity_str: return "#2980b9"
+        if "O(n)" in complexity_str: return "#e67e22"
+        return "#27ae60"
 
     def record_line(self, node, complexity_override=None):
         power = self.current_depth
@@ -58,30 +57,25 @@ class ComplexityAnalyzer(ast.NodeVisitor):
             "color": color
         })
 
-        # Update max complexity based on the power detected
         if not complexity_override and power > self.max_complexity:
             self.max_complexity = power
 
     def visit_FunctionDef(self, node):
-        self.current_function_name = node.name # Track what function we are in
+        self.current_function_name = node.name 
         self.record_line(node, complexity_override="O(1)")
         
         previous_max = self.max_complexity
         self.max_complexity = 0
         self.generic_visit(node)
         
-        # Save the numerical power before changing it
         func_max_power = self.max_complexity 
 
-        # --- RECURSION DETECTION ---
-        # Check if the function calls itself (Sign of recursion)
         body_str = ast.dump(node)
         is_recursive = f"id='{node.name}'" in body_str
         
         if is_recursive and "merge" in node.name:
             self.custom_functions[node.name] = "O(n log n)"
         else:
-            # 🔥 FIX: Convert the numerical power into a proper string!
             if func_max_power == 0: 
                 comp_str = "O(1)"
             elif func_max_power == 1: 
@@ -91,22 +85,18 @@ class ComplexityAnalyzer(ast.NodeVisitor):
             
             self.custom_functions[node.name] = comp_str
         
-        # Restore the numerical max_complexity for the overall file
         self.max_complexity = max(previous_max, func_max_power)
+        self.current_function_name = None # 🔥 FIX: Reset after method ends
 
     def visit_Call(self, node):
-        # Handle function calls specifically
         if isinstance(node.func, ast.Name):
             func_name = node.func.id
             
-            # If this is a recursive call to the function we are currently in
             if func_name == self.current_function_name:
-                # We show the final intended complexity of the algorithm
                 if "merge_sort" in func_name:
                     self.record_line(node, complexity_override="O(n log n)")
                     return
             
-            # If it's a call to a known custom function (like merge())
             if func_name in self.custom_functions:
                 self.record_line(node, complexity_override=self.custom_functions[func_name])
                 return
@@ -139,7 +129,6 @@ class ComplexityAnalyzer(ast.NodeVisitor):
         self.record_line(node)
 
     def get_final_badge(self):
-        # Explicit check for Merge Sort pattern
         if any("O(n log n)" in str(d.get('complexity')) for d in self.details):
             return "O(n log n)"
         if self.max_complexity == 0: return "O(1)"
@@ -166,7 +155,6 @@ def run_code(payload: CodePayload):
     redirected_output = sys.stdout = StringIO()
     try:
         exec_globals = {}
-        # This executes the Blockly-generated Python code
         exec(payload.code, exec_globals)
         output = redirected_output.getvalue()
         if not output:
