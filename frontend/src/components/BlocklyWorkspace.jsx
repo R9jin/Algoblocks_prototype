@@ -236,6 +236,53 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
         return `for ${variable} in ${rangeCode}:\n${branch}`;
       };
 
+      // This stops Blockly from adding "global i, key, j" inside functions
+      pythonGenerator.INDENT = "  ";
+      pythonGenerator.addReservedWords('main');
+
+    // --- FIX: Add this corrected version to BlocklyWorkspace.jsx ---
+
+    pythonGenerator.init = function(workspace) {
+      // 1. Manually create the name database Blockly is complaining about
+      // This uses Python's reserved words to prevent variable name collisions
+      this.nameDB_ = new Blockly.Names(this.RESERVED_WORDS_);
+      
+      // 2. Point it to the current workspace's variables
+      this.nameDB_.setVariableMap(workspace.getVariableMap());
+
+      // 3. Initialize the definitions and function names objects
+      this.definitions_ = Object.create(null);
+      this.functionNames_ = Object.create(null);
+
+      // NOTE: We are NOT calling "this.variableDB_.reset()" or scanning 
+      // for all variables here. This is what prevents the "arr = None" 
+      // and "global" lines from appearing at the top.
+    };
+
+      // --- 2. ADJUST "IN LIST GET" TO BE 0-BASED ---
+      // This overrides the math logic so it doesn't subtract 1
+      pythonGenerator.forBlock['lists_getIndex'] = function(block) {
+        const mode = block.getFieldValue('MODE') || 'GET';
+        const where = block.getFieldValue('WHERE') || 'FROM_START';
+        const listOrder = (where === 'RANDOM') ? pythonGenerator.ORDER_NONE : pythonGenerator.ORDER_MEMBER;
+        const list = pythonGenerator.valueToCode(block, 'VALUE', listOrder) || '[]';
+
+        if (where === 'FROM_START') {
+          const at = pythonGenerator.valueToCode(block, 'AT', pythonGenerator.ORDER_NONE) || '0';
+          // Removed the "- 1" logic here to make it pure 0-based
+          return [list + '[' + at + ']', pythonGenerator.ORDER_MEMBER];
+        }
+        // ... (keep other 'where' cases if you use them)
+        return [list, pythonGenerator.ORDER_MEMBER];
+      };
+
+      // --- 3. REMOVE THE TOP-LEVEL VARIABLE INITIALIZATION ---
+      // This stops the "arr = None" lines at the very top of the script
+      pythonGenerator.finish = function(code) {
+        const definitions = Object.values(this.definitions_);
+        return definitions.join('\n\n') + '\n\n' + code;
+      };
+
       // Change listener for auto-code generation
       workspace.current.addChangeListener((event) => {
         if (event.type === Blockly.Events.BLOCK_CREATE || 
