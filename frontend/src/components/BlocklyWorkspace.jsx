@@ -93,11 +93,7 @@ const toolbox = {
       contents: [
         { kind: "block", type: "math_number", fields: { NUM: 123 } },
         { kind: "block", type: "math_arithmetic", inputs: { A: { shadow: { type: "math_number", fields: { NUM: 1 } } }, B: { shadow: { type: "math_number", fields: { NUM: 1 } } } } },
-        { kind: "block", type: "math_assignment", inputs: { DELTA: { shadow: { type: "math_number", fields: { NUM: 1 }
-              }
-            }
-          }
-        },
+        { kind: "block", type: "math_assignment", inputs: { DELTA: { shadow: { type: "math_number", fields: { NUM: 1 } } } } },
         { kind: "block", type: "math_single" },
         { kind: "block", type: "math_trig" },
         { kind: "block", type: "math_constant" },
@@ -158,16 +154,19 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
   const workspace = useRef(null);
   const onChangeRef = useRef(onChange);
 
-  // --- EXPOSE FUNCTIONS ---
   useImperativeHandle(ref, () => ({
     clear: () => {
       if (workspace.current) workspace.current.clear();
     },
     loadTemplate: (json) => {
       if (workspace.current) {
+        Blockly.Events.disable(); 
         workspace.current.clear();
         Blockly.serialization.workspaces.load(json, workspace.current);
+        Blockly.Events.enable(); 
+        return pythonGenerator.workspaceToCode(workspace.current);
       }
+      return "";
     },
     setTheme: (themeName) => {
       if (workspace.current) {
@@ -184,12 +183,10 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
     if (workspace.current) return;
 
     if (blocklyDiv.current) {
-      // Clear specific shortcut to prevent Strict Mode double-registration crash
       if (Blockly.ShortcutRegistry.registry.getRegistry()['startSearch']) {
         Blockly.ShortcutRegistry.registry.unregister('startSearch');
       }
 
-      // INJECT WORKSPACE
       workspace.current = Blockly.inject(blocklyDiv.current, {
         toolbox: toolbox,
         trashcan: true,
@@ -199,7 +196,6 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
         theme: ModernTheme, 
       });
 
-      // --- INITIALIZE STABLE PLUGINS ---
       try {
         new WorkspaceSearch(workspace.current).init();
         new ZoomToFitControl(workspace.current).init();
@@ -212,16 +208,28 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
         console.warn("Plugin init skipped:", e.message);
       }
 
-      // --- PYTHON GENERATORS ---
+      pythonGenerator.init = function(workspace) {
+        this.variableDB_ = new Blockly.Names(this.RESERVED_WORDS_);
+        this.nameDB_ = new Blockly.Names(this.RESERVED_WORDS_);
+        this.nameDB_.setVariableMap(workspace.getVariableMap());
+        this.definitions_ = Object.create(null);
+        this.functionNames_ = Object.create(null);
+      };
+
+      pythonGenerator.finish = function(code) {
+        const definitions = Object.values(this.definitions_);
+        return definitions.join('\n\n') + '\n\n' + code;
+      };
+
       pythonGenerator.forBlock['comment_block'] = function(block) {
         const text = block.getFieldValue('TEXT');
         return `# ${text}\n`;
       };
 
+      // --- CRASH-PROOF MATH ASSIGNMENT ---
       pythonGenerator.forBlock['math_assignment'] = function(block) {
         const variable = pythonGenerator.getVariableName(block.getFieldValue('VAR'));
         const operator = block.getFieldValue('OP');
-        // Use ORDER_ATOMIC for cleaner number generation
         const value = pythonGenerator.valueToCode(block, 'DELTA', pythonGenerator.ORDER_ATOMIC) || '0';
         
         let symbol = "+=";
@@ -232,49 +240,28 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
         return `${variable} ${symbol} ${value}\n`;
       };
 
-      // Custom Range Loop
+      // --- CRASH-PROOF CONTROLS_FOR (NO COMMA 1, CLEAN INDENTS) ---
       pythonGenerator.forBlock['controls_for'] = function(block) {
         const variable = pythonGenerator.getVariableName(block.getFieldValue('VAR'));
         const from = pythonGenerator.valueToCode(block, 'FROM', pythonGenerator.ORDER_NONE) || '0';
-        const to = pythonGenerator.valueToCode(block, 'TO', pythonGenerator.ORDER_ADDITIVE) || '0';
+        const to = pythonGenerator.valueToCode(block, 'TO', pythonGenerator.ORDER_NONE) || '0';
         const step = pythonGenerator.valueToCode(block, 'BY', pythonGenerator.ORDER_NONE) || '1';
-        let rangeCode = (step === '1' && from === '0') ? `range(${to})` : `range(${from}, ${to}, ${step})`;
+        
+        let rangeCode;
+        if (step.trim() === '1') {
+          if (from.trim() === '0') {
+            rangeCode = `range(${to})`;
+          } else {
+            rangeCode = `range(${from}, ${to})`;
+          }
+        } else {
+          rangeCode = `range(${from}, ${to}, ${step})`;
+        }
+        
         let branch = pythonGenerator.statementToCode(block, 'DO') || pythonGenerator.PASS;
         return `for ${variable} in ${rangeCode}:\n${branch}`;
       };
 
-      // This stops Blockly from adding "global i, key, j" inside functions
-      pythonGenerator.INDENT = "  ";
-      pythonGenerator.addReservedWords('main');
-
-    // --- FIX: Add this corrected version to BlocklyWorkspace.jsx ---
-
-      pythonGenerator.init = function(workspace) {
-      // 1. THIS IS THE MISSING LINE:
-      // It initializes the variable database that the generator uses internally.
-      this.variableDB_ = new Blockly.Names(this.RESERVED_WORDS_);
-      
-      // 2. Setup the name database for general names
-      this.nameDB_ = new Blockly.Names(this.RESERVED_WORDS_);
-      this.nameDB_.setVariableMap(workspace.getVariableMap());
-
-      // 3. Initialize definitions and function names
-      this.definitions_ = Object.create(null);
-      this.functionNames_ = Object.create(null);
-
-      // CRITICAL: We still DO NOT call "this.variableDB_.reset()". 
-      // Leaving that out is what actually stops the "global" and "arr = None" lines.
-    };
-
-        // Add this right after the init override
-    pythonGenerator.finish = function(code) {
-      // Filter out any unwanted definitions if necessary
-      const definitions = Object.values(this.definitions_);
-      return definitions.join('\n\n') + '\n\n' + code;
-    };
-
-      // --- 2. ADJUST "IN LIST GET" TO BE 0-BASED ---
-      // This overrides the math logic so it doesn't subtract 1
       pythonGenerator.forBlock['lists_getIndex'] = function(block) {
         const mode = block.getFieldValue('MODE') || 'GET';
         const where = block.getFieldValue('WHERE') || 'FROM_START';
@@ -283,22 +270,11 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
 
         if (where === 'FROM_START') {
           const at = pythonGenerator.valueToCode(block, 'AT', pythonGenerator.ORDER_NONE) || '0';
-          // Removed the "- 1" logic here to make it pure 0-based
           return [list + '[' + at + ']', pythonGenerator.ORDER_MEMBER];
         }
-        // ... (keep other 'where' cases if you use them)
         return [list, pythonGenerator.ORDER_MEMBER];
       };
 
-      // --- 3. REMOVE THE TOP-LEVEL VARIABLE INITIALIZATION ---
-      // This stops the "arr = None" lines at the very top of the script
-      pythonGenerator.finish = function(code) {
-        const definitions = Object.values(this.definitions_);
-        return definitions.join('\n\n') + '\n\n' + code;
-      };
-
-      // --- FIX: ADJUST "IN LIST SET" TO BE 0-BASED ---
-      // This overrides the logic to prevent adding "int(... - 1)"
       pythonGenerator.forBlock['lists_setIndex'] = function(block) {
         const list = pythonGenerator.valueToCode(block, 'LIST', pythonGenerator.ORDER_MEMBER) || '[]';
         const mode = block.getFieldValue('MODE') || 'SET';
@@ -307,19 +283,15 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
 
         if (where === 'FROM_START') {
           const at = pythonGenerator.valueToCode(block, 'AT', pythonGenerator.ORDER_NONE) || '0';
-          // Removed the "- 1" and the int() wrapping to keep it pure 0-based
           if (mode === 'SET') {
             return list + '[' + at + '] = ' + value + '\n';
           } else if (mode === 'INSERT') {
             return list + '.insert(' + at + ', ' + value + ')\n';
           }
         }
-        
-        // Default fallback for other 'where' types (LAST, FIRST, etc.)
         return ''; 
       };
 
-      // Change listener for auto-code generation
       workspace.current.addChangeListener((event) => {
         if (event.type === Blockly.Events.BLOCK_CREATE || 
             event.type === Blockly.Events.BLOCK_DELETE || 
