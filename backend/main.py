@@ -70,6 +70,9 @@ class ComplexityAnalyzer(ast.NodeVisitor):
         self.max_complexity = 0
         self.generic_visit(node)
         
+        # Save the numerical power before changing it
+        func_max_power = self.max_complexity 
+
         # --- RECURSION DETECTION ---
         # Check if the function calls itself (Sign of recursion)
         body_str = ast.dump(node)
@@ -78,9 +81,18 @@ class ComplexityAnalyzer(ast.NodeVisitor):
         if is_recursive and "merge" in node.name:
             self.custom_functions[node.name] = "O(n log n)"
         else:
-            self.custom_functions[node.name] = self.max_complexity
+            # 🔥 FIX: Convert the numerical power into a proper string!
+            if func_max_power == 0: 
+                comp_str = "O(1)"
+            elif func_max_power == 1: 
+                comp_str = "O(n)"
+            else: 
+                comp_str = f"O(n^{func_max_power})"
+            
+            self.custom_functions[node.name] = comp_str
         
-        self.max_complexity = max(previous_max, 1 if self.custom_functions[node.name] == "O(n log n)" else self.custom_functions[node.name])
+        # Restore the numerical max_complexity for the overall file
+        self.max_complexity = max(previous_max, func_max_power)
 
     def visit_Call(self, node):
         # Handle function calls specifically
