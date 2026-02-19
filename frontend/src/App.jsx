@@ -169,6 +169,7 @@ export default function App() {
               
               <optgroup label="Sort Algo">
                 <option value="sort/bubble_sort">Bubble Sort - O(n²)</option>
+                <option value="sort/insertion_sort">Insertion Sort - O(n²)</option>
                 <option value="sort/selection_sort">Selection Sort - O(n²)</option>
                 <option value="sort/merge_sort">Merge Sort - O(n log n)</option>
               </optgroup>

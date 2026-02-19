@@ -283,6 +283,28 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
         return definitions.join('\n\n') + '\n\n' + code;
       };
 
+      // --- FIX: ADJUST "IN LIST SET" TO BE 0-BASED ---
+      // This overrides the logic to prevent adding "int(... - 1)"
+      pythonGenerator.forBlock['lists_setIndex'] = function(block) {
+        const list = pythonGenerator.valueToCode(block, 'LIST', pythonGenerator.ORDER_MEMBER) || '[]';
+        const mode = block.getFieldValue('MODE') || 'SET';
+        const where = block.getFieldValue('WHERE') || 'FROM_START';
+        const value = pythonGenerator.valueToCode(block, 'TO', pythonGenerator.ORDER_NONE) || 'None';
+
+        if (where === 'FROM_START') {
+          const at = pythonGenerator.valueToCode(block, 'AT', pythonGenerator.ORDER_NONE) || '0';
+          // Removed the "- 1" and the int() wrapping to keep it pure 0-based
+          if (mode === 'SET') {
+            return list + '[' + at + '] = ' + value + '\n';
+          } else if (mode === 'INSERT') {
+            return list + '.insert(' + at + ', ' + value + ')\n';
+          }
+        }
+        
+        // Default fallback for other 'where' types (LAST, FIRST, etc.)
+        return ''; 
+      };
+
       // Change listener for auto-code generation
       workspace.current.addChangeListener((event) => {
         if (event.type === Blockly.Events.BLOCK_CREATE || 
