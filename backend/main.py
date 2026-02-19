@@ -2,7 +2,8 @@ from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 import models
-
+import sys          # <--- ADDED: Required for stdout manipulation
+from io import StringIO # <--- ADDED: Required for capturing print output
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ast
@@ -148,12 +149,11 @@ class ComplexityAnalyzer(ast.NodeVisitor):
 
 # --- ENDPOINTS ---
 
-@app.post("/analyze")
+# Update the paths to include /api to match vercel.json
+@app.post("/api/analyze")
 def analyze_complexity(payload: CodePayload):
     try:
         tree = ast.parse(payload.code)
-        
-        # Initialize with source code so we can grab lines
         analyzer = ComplexityAnalyzer(payload.code)
         analyzer.visit(tree)
         
@@ -162,35 +162,27 @@ def analyze_complexity(payload: CodePayload):
             "total": analyzer.get_final_badge(),
             "lines": analyzer.details
         }
-
     except Exception as e:
         return {"status": "error", "total": "Error", "lines": []}
 
-@app.post("/run")
+@app.post("/api/run")
 def run_code(payload: CodePayload):
-    """
-    Executes the Python code on the server and captures the output.
-    WARNING: usage of 'exec' is dangerous in production, but fine for a local thesis.
-    """
     # 1. Create a buffer to capture 'print' statements
     old_stdout = sys.stdout
     redirected_output = sys.stdout = StringIO()
 
     try:
-        # 2. Execute the code safely
-        # We create a specific dictionary for global/local variables to keep it clean
+        # 2. Execute the code
         exec_globals = {}
         exec(payload.code, exec_globals)
         
         # 3. Get the output
         output = redirected_output.getvalue()
         
-        # If nothing was printed, let the user know it ran successfully
         if not output:
             output = "> Code ran successfully (No output printed)."
 
     except Exception as e:
-        # Capture runtime errors (like Index out of Bounds)
         output = f"Runtime Error: {str(e)}"
     
     finally:
@@ -199,7 +191,7 @@ def run_code(payload: CodePayload):
 
     return {"status": "success", "output": output}
 
-@app.post("/projects/")
+@app.post("/api/projects/")
 def create_project(title: str, blocks: dict, db: Session = Depends(get_db)):
     """
     Saves a student's algorithm to the database.
@@ -213,11 +205,8 @@ def create_project(title: str, blocks: dict, db: Session = Depends(get_db)):
     db.add(new_project)
     db.commit()
     db.refresh(new_project)
-    return {"status": "success", "id": new_project.id}
+    return {"status": "success"}
 
-@app.get("/projects/")
+@app.get("/api/projects/")
 def get_projects(db: Session = Depends(get_db)):
-    """
-    Fetches all saved projects.
-    """
     return db.query(models.Project).all()

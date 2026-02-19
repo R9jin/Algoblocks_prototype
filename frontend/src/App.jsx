@@ -16,7 +16,9 @@ export default function App() {
     setBlocklyJson(json);
     
     try {
-      const response = await fetch("http://127.0.0.1:8000/analyze", {
+      // ❌ OLD: await fetch("http://127.0.0.1:8000/analyze", ...
+      // ✅ NEW: Use relative path for Vercel routing
+      const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: pythonCode }),
@@ -31,8 +33,9 @@ export default function App() {
         });
       }
     } catch (error) {
-      console.error("Backend offline:", error);
-      setAnalysisResult({ total: "Offline", lines: [] });
+      // This will now only trigger if the Vercel Serverless function fails
+      console.error("Analysis Error:", error);
+      setAnalysisResult({ total: "Error", lines: [] });
     }
   };
 
