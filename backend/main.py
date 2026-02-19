@@ -167,28 +167,18 @@ def analyze_complexity(payload: CodePayload):
 
 @app.post("/api/run")
 def run_code(payload: CodePayload):
-    # 1. Create a buffer to capture 'print' statements
     old_stdout = sys.stdout
     redirected_output = sys.stdout = StringIO()
-
     try:
-        # 2. Execute the code
         exec_globals = {}
         exec(payload.code, exec_globals)
-        
-        # 3. Get the output
         output = redirected_output.getvalue()
-        
         if not output:
             output = "> Code ran successfully (No output printed)."
-
     except Exception as e:
         output = f"Runtime Error: {str(e)}"
-    
     finally:
-        # 4. Reset stdout (Very Important!)
         sys.stdout = old_stdout
-
     return {"status": "success", "output": output}
 
 # @app.post("/api/projects/")

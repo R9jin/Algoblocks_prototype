@@ -93,7 +93,11 @@ const toolbox = {
       contents: [
         { kind: "block", type: "math_number", fields: { NUM: 123 } },
         { kind: "block", type: "math_arithmetic", inputs: { A: { shadow: { type: "math_number", fields: { NUM: 1 } } }, B: { shadow: { type: "math_number", fields: { NUM: 1 } } } } },
-        { kind: "block", type: "math_assignment" }, 
+        { kind: "block", type: "math_assignment", inputs: { DELTA: { shadow: { type: "math_number", fields: { NUM: 1 }
+              }
+            }
+          }
+        },
         { kind: "block", type: "math_single" },
         { kind: "block", type: "math_trig" },
         { kind: "block", type: "math_constant" },
@@ -217,11 +221,14 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
       pythonGenerator.forBlock['math_assignment'] = function(block) {
         const variable = pythonGenerator.getVariableName(block.getFieldValue('VAR'));
         const operator = block.getFieldValue('OP');
-        const value = pythonGenerator.valueToCode(block, 'DELTA', pythonGenerator.ORDER_ADDITIVE) || '0';
+        // Use ORDER_ATOMIC for cleaner number generation
+        const value = pythonGenerator.valueToCode(block, 'DELTA', pythonGenerator.ORDER_ATOMIC) || '0';
+        
         let symbol = "+=";
         if (operator === "MINUS") symbol = "-=";
         else if (operator === "MULTIPLY") symbol = "*=";
         else if (operator === "DIVIDE") symbol = "/=";
+        
         return `${variable} ${symbol} ${value}\n`;
       };
 
@@ -242,21 +249,24 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
 
     // --- FIX: Add this corrected version to BlocklyWorkspace.jsx ---
 
+    // Add this inside your useEffect in BlocklyWorkspace.jsx
     pythonGenerator.init = function(workspace) {
-      // 1. Manually create the name database Blockly is complaining about
-      // This uses Python's reserved words to prevent variable name collisions
+      // Create the name database so Blockly doesn't crash
       this.nameDB_ = new Blockly.Names(this.RESERVED_WORDS_);
-      
-      // 2. Point it to the current workspace's variables
       this.nameDB_.setVariableMap(workspace.getVariableMap());
 
-      // 3. Initialize the definitions and function names objects
       this.definitions_ = Object.create(null);
       this.functionNames_ = Object.create(null);
 
-      // NOTE: We are NOT calling "this.variableDB_.reset()" or scanning 
-      // for all variables here. This is what prevents the "arr = None" 
-      // and "global" lines from appearing at the top.
+      // By NOT calling variableDB_.reset() here, we skip the generation 
+      // of "global" and "var = None" lines.
+    };
+
+        // Add this right after the init override
+    pythonGenerator.finish = function(code) {
+      // Filter out any unwanted definitions if necessary
+      const definitions = Object.values(this.definitions_);
+      return definitions.join('\n\n') + '\n\n' + code;
     };
 
       // --- 2. ADJUST "IN LIST GET" TO BE 0-BASED ---
