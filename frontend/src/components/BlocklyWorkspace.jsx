@@ -247,19 +247,24 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
         const from = pythonGenerator.valueToCode(block, 'FROM', pythonGenerator.ORDER_NONE) || '0';
         const to = pythonGenerator.valueToCode(block, 'TO', pythonGenerator.ORDER_ADDITIVE) || '0';
         const step = pythonGenerator.valueToCode(block, 'BY', pythonGenerator.ORDER_NONE) || '1';
-        let rangeCode = (step === '1' && from === '0') ? `range(${to})` : `range(${from}, ${to}, ${step})`;
+        
+        let rangeCode;
+        if (step === '1') {
+          if (from === '0') {
+            // Uses standard string addition to prevent syntax errors
+            rangeCode = 'range(' + to + ')';
+          } else {
+            rangeCode = 'range(' + from + ', ' + to + ')';
+          }
+        } else {
+          rangeCode = 'range(' + from + ', ' + to + ', ' + step + ')';
+        }
         
         // FIX: Hardcode '  pass\n' here to prevent python syntax errors
         let branch = pythonGenerator.statementToCode(block, 'DO') || '  pass\n';
         
-        return `for ${variable} in ${rangeCode}:\n${branch}`;
+        return 'for ' + variable + ' in ' + rangeCode + ':\n' + branch;
       };
-
-      // This stops Blockly from adding "global i, key, j" inside functions
-      pythonGenerator.INDENT = "  ";
-      pythonGenerator.addReservedWords('main');
-
-    // --- FIX: Add this corrected version to BlocklyWorkspace.jsx ---
 
     pythonGenerator.init = function(workspace) {
     // 1. THIS IS THE MISSING LINE:
