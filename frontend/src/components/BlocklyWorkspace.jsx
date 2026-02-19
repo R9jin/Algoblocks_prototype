@@ -170,11 +170,18 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
   const workspace = useRef(null);
   const onChangeRef = useRef(onChange);
 
-  // --- EXPOSE CLEAR FUNCTION ---
+  // --- EXPOSE CLEAR & LOAD FUNCTIONS ---
   useImperativeHandle(ref, () => ({
     clear: () => {
       if (workspace.current) {
         workspace.current.clear();
+      }
+    },
+    // NEW: Function to inject JSON into the workspace
+    loadTemplate: (json) => {
+      if (workspace.current) {
+        workspace.current.clear(); // Clear existing blocks first
+        Blockly.serialization.workspaces.load(json, workspace.current);
       }
     }
   }));

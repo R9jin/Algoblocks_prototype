@@ -1,4 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.orm import Session
+from database import get_db
+import models
+
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ast
@@ -21,46 +25,36 @@ class CodePayload(BaseModel):
 class ComplexityAnalyzer(ast.NodeVisitor):
     def __init__(self, source_code):
         self.source_lines = source_code.splitlines()
-        self.details = []       # The rows for your table
-        self.current_depth = 0  # Track nested loops
-        self.max_complexity = 0 # Track worst-case O()
+        self.details = []       
+        self.current_depth = 0  
+        self.max_complexity = 0 
         self.has_sort = False
+        
+        # 🌟 NEW: Dictionary to memorize custom function complexities
+        self.custom_functions = {} 
     
     def get_code_snippet(self, node):
-        """Grabs the actual text from the source code using line numbers."""
         if hasattr(node, 'lineno'):
-            # AST line numbers are 1-based, list is 0-based
             line = self.source_lines[node.lineno - 1]
             return line.strip()
         return "Code Block"
 
     def get_color(self, complexity_str):
-        """Returns the color code for the frontend."""
-        if "n^2" in complexity_str or "n^3" in complexity_str:
-            return "#e74c3c" # RED (Slow)
-        if "log" in complexity_str:
-            return "#2980b9" # BLUE (Logarithmic)
-        if "O(n)" in complexity_str:
-            return "#e67e22" # ORANGE (Linear)
-        return "#27ae60"     # GREEN (Fast)
+        if "n^2" in complexity_str or "n^3" in complexity_str: return "#e74c3c" # RED
+        if "log" in complexity_str: return "#2980b9" # BLUE
+        if "O(n)" in complexity_str: return "#e67e22" # ORANGE
+        return "#27ae60" # GREEN
 
     def record_line(self, node, complexity_override=None):
-        """Helper to save a line to the results."""
-        # Calculate Complexity
         power = self.current_depth
         if complexity_override:
             comp_str = complexity_override
-        elif power == 0:
-            comp_str = "O(1)"
-        elif power == 1:
-            comp_str = "O(n)"
-        else:
-            comp_str = f"O(n^{power})"
+        elif power == 0: comp_str = "O(1)"
+        elif power == 1: comp_str = "O(n)"
+        else: comp_str = f"O(n^{power})"
 
-        # Determine Color
         color = self.get_color(comp_str)
 
-        # Add to list
         self.details.append({
             "lineOfCode": self.get_code_snippet(node),
             "complexity": comp_str,
@@ -68,16 +62,32 @@ class ComplexityAnalyzer(ast.NodeVisitor):
             "color": color
         })
 
-        # Update Max (for the badge)
         if power > self.max_complexity:
             self.max_complexity = power
 
-    # --- VISITORS (What we analyze) ---
+    # --- 🌟 NEW: Analyze Function Definitions ---
+    def visit_FunctionDef(self, node):
+        # 1. Record the "def name():" line
+        self.record_line(node, complexity_override="O(1)")
+        
+        # 2. Reset max tracker to measure ONLY this function
+        previous_max = self.max_complexity
+        self.max_complexity = 0
+        
+        # 3. Analyze everything inside the function
+        self.generic_visit(node)
+        
+        # 4. Save the function's complexity to our memory!
+        self.custom_functions[node.name] = self.max_complexity
+        
+        # 5. Restore the global max complexity
+        self.max_complexity = max(previous_max, self.custom_functions[node.name])
 
+    # --- VISITORS ---
     def visit_For(self, node):
         self.current_depth += 1
-        self.record_line(node) # Record the "for" line itself
-        self.generic_visit(node) # Go inside the loop
+        self.record_line(node) 
+        self.generic_visit(node) 
         self.current_depth -= 1
 
     def visit_While(self, node):
@@ -93,28 +103,42 @@ class ComplexityAnalyzer(ast.NodeVisitor):
     def visit_Assign(self, node):
         self.record_line(node)
     
-    def visit_AugAssign(self, node): # Handles +=, -=
+    def visit_AugAssign(self, node):
         self.record_line(node)
 
     def visit_Expr(self, node):
-        # This handles function calls like print() or list.sort()
-        is_sort = False
-        
-        # Check for .sort()
         if isinstance(node.value, ast.Call):
+            # 1. Is it a built-in sort?
+            is_sort = False
             if isinstance(node.value.func, ast.Attribute) and node.value.func.attr == 'sort':
                 is_sort = True
             elif isinstance(node.value.func, ast.Name) and node.value.func.id == 'sorted':
                 is_sort = True
 
-        if is_sort:
-            self.has_sort = True
-            self.record_line(node, complexity_override="O(n log n)")
-        else:
-            self.record_line(node)
+            if is_sort:
+                self.has_sort = True
+                self.record_line(node, complexity_override="O(n log n)")
+                return
+
+            # 🌟 2. NEW: Is it a custom function we memorized?
+            if isinstance(node.value.func, ast.Name):
+                func_name = node.value.func.id
+                if func_name in self.custom_functions:
+                    
+                    # Fetch its complexity from memory
+                    func_power = self.custom_functions[func_name]
+                    if func_power == 0: comp_str = "O(1)"
+                    elif func_power == 1: comp_str = "O(n)"
+                    else: comp_str = f"O(n^{func_power})"
+                    
+                    # Record the function call with its TRUE complexity
+                    self.record_line(node, complexity_override=comp_str)
+                    return
+
+        # 3. Normal expression
+        self.record_line(node)
 
     def get_final_badge(self):
-        # Logic for the "Total Complexity" Badge
         if self.has_sort and self.max_complexity < 2:
             return "O(n log n)"
         
@@ -174,3 +198,26 @@ def run_code(payload: CodePayload):
         sys.stdout = old_stdout
 
     return {"status": "success", "output": output}
+
+@app.post("/projects/")
+def create_project(title: str, blocks: dict, db: Session = Depends(get_db)):
+    """
+    Saves a student's algorithm to the database.
+    """
+    # ⚠️ In real life, get 'user_id' from the logged-in token
+    new_project = models.Project(
+        title=title, 
+        data=blocks,  # We dump the raw JSON here
+        owner_id=1    # Hardcoded for prototype
+    )
+    db.add(new_project)
+    db.commit()
+    db.refresh(new_project)
+    return {"status": "success", "id": new_project.id}
+
+@app.get("/projects/")
+def get_projects(db: Session = Depends(get_db)):
+    """
+    Fetches all saved projects.
+    """
+    return db.query(models.Project).all()
