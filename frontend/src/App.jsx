@@ -1,5 +1,5 @@
 // src/App.jsx
-import { useRef, useState } from "react"; // <--- IMPORT useRef
+import { useRef, useState } from "react";
 import Split from "react-split";
 import BlocklyWorkspace from "./components/BlocklyWorkspace.jsx";
 
@@ -9,13 +9,12 @@ export default function App() {
   const [consoleOutput, setConsoleOutput] = useState("Ready to run...");
   const [blocklyJson, setBlocklyJson] = useState(null);
 
-  const workspaceRef = useRef(null); // <--- CREATE REF
+  const workspaceRef = useRef(null);
 
   const handleBlocklyChange = async (json, pythonCode) => {
     setGeneratedPython(pythonCode);
     setBlocklyJson(json);
     
-    // --- NEW: CALL PYTHON BACKEND ---
     try {
       const response = await fetch("http://127.0.0.1:8000/analyze", {
         method: "POST",
@@ -26,7 +25,6 @@ export default function App() {
       const data = await response.json();
       
       if (data.status === "success") {
-        // We directly use the data from Python now!
         setAnalysisResult({ 
             total: data.total, 
             lines: data.lines 
@@ -34,7 +32,6 @@ export default function App() {
       }
     } catch (error) {
       console.error("Backend offline:", error);
-      // Optional: Fallback to local engine if needed, or just show "Offline"
       setAnalysisResult({ total: "Offline", lines: [] });
     }
   };
@@ -45,33 +42,26 @@ export default function App() {
         return;
     }
 
-    // --- NEW: Prompt user for a file name ---
     let fileName = prompt("Enter a name for your algorithm:", "my-algorithm");
     
-    // If the user clicks "Cancel" or leaves it blank, abort the save
-    if (!fileName) {
-        return; 
-    }
+    if (!fileName) return; 
 
-    // Ensure the file ends with .json
     if (!fileName.endsWith(".json")) {
         fileName += ".json";
     }
 
-    // --- Existing Save Logic ---
     const jsonString = JSON.stringify(blocklyJson, null, 2);
     const blob = new Blob([jsonString], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = fileName; // <--- Uses the custom name here
+    link.download = fileName; 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
-  // <--- ADDED CLEAR FUNCTION
   const clearAll = () => {
     if (window.confirm("⚠️ Are you sure you want to delete all blocks? This cannot be undone.")) {
       if (workspaceRef.current) {
@@ -109,27 +99,23 @@ export default function App() {
     });
   };
 
-  // --- NEW: LOAD PRE-MADE TEMPLATE WITH CONFIRMATION ---
   const handleTemplateSelect = async (e) => {
     const templatePath = e.target.value;
     if (!templatePath) return; 
 
-    // 1. Ask for confirmation before overwriting
     const confirmLoad = window.confirm("⚠️ Loading a template will overwrite your current workspace. Do you want to continue?");
     
     if (!confirmLoad) {
-      e.target.value = ""; // Reset dropdown if they cancel
+      e.target.value = ""; 
       return;
     }
 
     try {
-      // 2. Fetch the JSON file from the React 'public' folder
       const response = await fetch(`/templates/${templatePath}.json`);
       if (!response.ok) throw new Error("Template not found");
       
       const json = await response.json();
       
-      // 3. Send the JSON to Blockly
       if (workspaceRef.current) {
         workspaceRef.current.loadTemplate(json);
       }
@@ -138,8 +124,14 @@ export default function App() {
       alert(`Could not find the file: /templates/${templatePath}.json`);
     }
     
-    // 4. Reset the dropdown back to the placeholder text
     e.target.value = ""; 
+  };
+
+  // --- NEW: THEME SWITCHER LOGIC ---
+  const handleThemeChange = (e) => {
+    if (workspaceRef.current) {
+      workspaceRef.current.setTheme(e.target.value);
+    }
   };
 
   return (
@@ -148,7 +140,17 @@ export default function App() {
         <div className="header-left-group">
             <h1>AlgoBlocks</h1>
 
-            {/* --- NEW: PRE-MADE TEMPLATES DROPDOWN --- */}
+            {/* --- NEW: THEME TOGGLE --- */}
+            <select 
+              className="save-button" 
+              style={{ backgroundColor: "#34495e", cursor: "pointer", marginRight: "10px" }}
+              onChange={handleThemeChange}
+              defaultValue="modern"
+            >
+              <option value="modern">☀️ Modern Theme</option>
+              <option value="dark">🌙 Dark Theme</option>
+            </select>
+
             <select 
               className="save-button" 
               style={{ backgroundColor: "#8e44ad", cursor: "pointer", marginRight: "10px" }}
@@ -163,7 +165,6 @@ export default function App() {
               </optgroup>
               
               <optgroup label="Sort Algo">
-                {/* You mentioned you only have Bubble Sort for now, but we can list the others to prepare! */}
                 <option value="sort/bubble_sort">Bubble Sort - O(n²)</option>
                 <option value="sort/selection_sort">Selection Sort - O(n²)</option>
                 <option value="sort/merge_sort">Merge Sort - O(n log n)</option>
@@ -173,7 +174,6 @@ export default function App() {
             <button className="save-button" onClick={saveConfiguration}>
                 💾 SAVE BLOCKS
             </button>
-            {/* <--- ADDED CLEAR BUTTON */}
             <button 
               className="save-button" 
               onClick={clearAll} 
@@ -201,7 +201,6 @@ export default function App() {
           minSize={100}
         >
           <div className="workspace-area">
-            {/* <--- PASS REF TO WORKSPACE */}
             <BlocklyWorkspace ref={workspaceRef} onChange={handleBlocklyChange} />
           </div>
           
