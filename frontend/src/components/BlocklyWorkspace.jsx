@@ -228,10 +228,13 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
         return `# ${text}\n`;
       };
 
+      // --- 1. FIXED CUSTOM MATH ASSIGNMENT ---
       pythonGenerator.forBlock['math_assignment'] = function(block) {
-        const variable = pythonGenerator.getVariableName(block.getFieldValue('VAR'));
+        // Safe variable retrieval to prevent crashes
+        const varId = block.getFieldValue('VAR');
+        const variable = pythonGenerator.nameDB_.getName(varId, Blockly.VARIABLE_CATEGORY_NAME || 'VARIABLE');
+        
         const operator = block.getFieldValue('OP');
-        // Use ORDER_ATOMIC for cleaner number generation
         const value = pythonGenerator.valueToCode(block, 'DELTA', pythonGenerator.ORDER_ATOMIC) || '0';
         
         let symbol = "+=";
@@ -239,19 +242,24 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
         else if (operator === "MULTIPLY") symbol = "*=";
         else if (operator === "DIVIDE") symbol = "/=";
         
-        return `${variable} ${symbol} ${value}\n`;
+        return variable + ' ' + symbol + ' ' + value + '\n';
       };
 
+      // --- 2. FIXED RANGE LOOP (COUNT WITH) ---
       pythonGenerator.forBlock['controls_for'] = function(block) {
-        const variable = pythonGenerator.getVariableName(block.getFieldValue('VAR'));
+        // Safe variable retrieval to prevent crashes
+        const varId = block.getFieldValue('VAR');
+        const variable = pythonGenerator.nameDB_.getName(varId, Blockly.VARIABLE_CATEGORY_NAME || 'VARIABLE');
+        
+        // Use ORDER_NONE to ensure math blocks wrap in safe parentheses e.g., range(1, (size - 1))
         const from = pythonGenerator.valueToCode(block, 'FROM', pythonGenerator.ORDER_NONE) || '0';
-        const to = pythonGenerator.valueToCode(block, 'TO', pythonGenerator.ORDER_ADDITIVE) || '0';
+        const to = pythonGenerator.valueToCode(block, 'TO', pythonGenerator.ORDER_NONE) || '0';
         const step = pythonGenerator.valueToCode(block, 'BY', pythonGenerator.ORDER_NONE) || '1';
         
         let rangeCode;
-        if (step === '1') {
-          if (from === '0') {
-            // Uses standard string addition to prevent syntax errors
+        // Trim strings to prevent spacing bugs 
+        if (step.trim() === '1') {
+          if (from.trim() === '0') {
             rangeCode = 'range(' + to + ')';
           } else {
             rangeCode = 'range(' + from + ', ' + to + ')';
@@ -260,7 +268,7 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
           rangeCode = 'range(' + from + ', ' + to + ', ' + step + ')';
         }
         
-        // FIX: Hardcode '  pass\n' here to prevent python syntax errors
+        // Ensure empty loops have valid Python indentation
         let branch = pythonGenerator.statementToCode(block, 'DO') || '  pass\n';
         
         return 'for ' + variable + ' in ' + rangeCode + ':\n' + branch;
