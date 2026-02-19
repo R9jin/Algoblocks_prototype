@@ -249,17 +249,21 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
 
     // --- FIX: Add this corrected version to BlocklyWorkspace.jsx ---
 
-    // Add this inside your useEffect in BlocklyWorkspace.jsx
-    pythonGenerator.init = function(workspace) {
-      // Create the name database so Blockly doesn't crash
+      pythonGenerator.init = function(workspace) {
+      // 1. THIS IS THE MISSING LINE:
+      // It initializes the variable database that the generator uses internally.
+      this.variableDB_ = new Blockly.Names(this.RESERVED_WORDS_);
+      
+      // 2. Setup the name database for general names
       this.nameDB_ = new Blockly.Names(this.RESERVED_WORDS_);
       this.nameDB_.setVariableMap(workspace.getVariableMap());
 
+      // 3. Initialize definitions and function names
       this.definitions_ = Object.create(null);
       this.functionNames_ = Object.create(null);
 
-      // By NOT calling variableDB_.reset() here, we skip the generation 
-      // of "global" and "var = None" lines.
+      // CRITICAL: We still DO NOT call "this.variableDB_.reset()". 
+      // Leaving that out is what actually stops the "global" and "arr = None" lines.
     };
 
         // Add this right after the init override
