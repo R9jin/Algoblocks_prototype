@@ -93,7 +93,11 @@ const toolbox = {
       contents: [
         { kind: "block", type: "math_number", fields: { NUM: 123 } },
         { kind: "block", type: "math_arithmetic", inputs: { A: { shadow: { type: "math_number", fields: { NUM: 1 } } }, B: { shadow: { type: "math_number", fields: { NUM: 1 } } } } },
-        { kind: "block", type: "math_assignment" }, 
+        { kind: "block", type: "math_assignment", inputs: { DELTA: { shadow: { type: "math_number", fields: { NUM: 1 }
+              }
+            }
+          }
+        },
         { kind: "block", type: "math_single" },
         { kind: "block", type: "math_trig" },
         { kind: "block", type: "math_constant" },
@@ -217,11 +221,14 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
       pythonGenerator.forBlock['math_assignment'] = function(block) {
         const variable = pythonGenerator.getVariableName(block.getFieldValue('VAR'));
         const operator = block.getFieldValue('OP');
-        const value = pythonGenerator.valueToCode(block, 'DELTA', pythonGenerator.ORDER_ADDITIVE) || '0';
+        // Use ORDER_ATOMIC for cleaner number generation
+        const value = pythonGenerator.valueToCode(block, 'DELTA', pythonGenerator.ORDER_ATOMIC) || '0';
+        
         let symbol = "+=";
         if (operator === "MINUS") symbol = "-=";
         else if (operator === "MULTIPLY") symbol = "*=";
         else if (operator === "DIVIDE") symbol = "/=";
+        
         return `${variable} ${symbol} ${value}\n`;
       };
 
@@ -234,6 +241,82 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
         let rangeCode = (step === '1' && from === '0') ? `range(${to})` : `range(${from}, ${to}, ${step})`;
         let branch = pythonGenerator.statementToCode(block, 'DO') || pythonGenerator.PASS;
         return `for ${variable} in ${rangeCode}:\n${branch}`;
+      };
+
+      // This stops Blockly from adding "global i, key, j" inside functions
+      pythonGenerator.INDENT = "  ";
+      pythonGenerator.addReservedWords('main');
+
+    // --- FIX: Add this corrected version to BlocklyWorkspace.jsx ---
+
+      pythonGenerator.init = function(workspace) {
+      // 1. THIS IS THE MISSING LINE:
+      // It initializes the variable database that the generator uses internally.
+      this.variableDB_ = new Blockly.Names(this.RESERVED_WORDS_);
+      
+      // 2. Setup the name database for general names
+      this.nameDB_ = new Blockly.Names(this.RESERVED_WORDS_);
+      this.nameDB_.setVariableMap(workspace.getVariableMap());
+
+      // 3. Initialize definitions and function names
+      this.definitions_ = Object.create(null);
+      this.functionNames_ = Object.create(null);
+
+      // CRITICAL: We still DO NOT call "this.variableDB_.reset()". 
+      // Leaving that out is what actually stops the "global" and "arr = None" lines.
+    };
+
+        // Add this right after the init override
+    pythonGenerator.finish = function(code) {
+      // Filter out any unwanted definitions if necessary
+      const definitions = Object.values(this.definitions_);
+      return definitions.join('\n\n') + '\n\n' + code;
+    };
+
+      // --- 2. ADJUST "IN LIST GET" TO BE 0-BASED ---
+      // This overrides the math logic so it doesn't subtract 1
+      pythonGenerator.forBlock['lists_getIndex'] = function(block) {
+        const mode = block.getFieldValue('MODE') || 'GET';
+        const where = block.getFieldValue('WHERE') || 'FROM_START';
+        const listOrder = (where === 'RANDOM') ? pythonGenerator.ORDER_NONE : pythonGenerator.ORDER_MEMBER;
+        const list = pythonGenerator.valueToCode(block, 'VALUE', listOrder) || '[]';
+
+        if (where === 'FROM_START') {
+          const at = pythonGenerator.valueToCode(block, 'AT', pythonGenerator.ORDER_NONE) || '0';
+          // Removed the "- 1" logic here to make it pure 0-based
+          return [list + '[' + at + ']', pythonGenerator.ORDER_MEMBER];
+        }
+        // ... (keep other 'where' cases if you use them)
+        return [list, pythonGenerator.ORDER_MEMBER];
+      };
+
+      // --- 3. REMOVE THE TOP-LEVEL VARIABLE INITIALIZATION ---
+      // This stops the "arr = None" lines at the very top of the script
+      pythonGenerator.finish = function(code) {
+        const definitions = Object.values(this.definitions_);
+        return definitions.join('\n\n') + '\n\n' + code;
+      };
+
+      // --- FIX: ADJUST "IN LIST SET" TO BE 0-BASED ---
+      // This overrides the logic to prevent adding "int(... - 1)"
+      pythonGenerator.forBlock['lists_setIndex'] = function(block) {
+        const list = pythonGenerator.valueToCode(block, 'LIST', pythonGenerator.ORDER_MEMBER) || '[]';
+        const mode = block.getFieldValue('MODE') || 'SET';
+        const where = block.getFieldValue('WHERE') || 'FROM_START';
+        const value = pythonGenerator.valueToCode(block, 'TO', pythonGenerator.ORDER_NONE) || 'None';
+
+        if (where === 'FROM_START') {
+          const at = pythonGenerator.valueToCode(block, 'AT', pythonGenerator.ORDER_NONE) || '0';
+          // Removed the "- 1" and the int() wrapping to keep it pure 0-based
+          if (mode === 'SET') {
+            return list + '[' + at + '] = ' + value + '\n';
+          } else if (mode === 'INSERT') {
+            return list + '.insert(' + at + ', ' + value + ')\n';
+          }
+        }
+        
+        // Default fallback for other 'where' types (LAST, FIRST, etc.)
+        return ''; 
       };
 
       // Change listener for auto-code generation

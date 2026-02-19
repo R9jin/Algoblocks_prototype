@@ -73,34 +73,28 @@ export default function App() {
     }
   };
 
-  const runCode = () => {
-    setConsoleOutput("> Running...");
-    if (!window.Sk) {
-      setConsoleOutput("Error: Python engine (Skulpt) not loaded. Check index.html");
-      return;
-    }
+  const runCode = async () => {
+      setConsoleOutput("> Running on server...");
+      
+      try {
+        const response = await fetch("/api/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: generatedPython }),
+        });
 
-    let outputBuffer = "";
-    function outf(text) { outputBuffer += text; }
-    function builtinRead(x) {
-      if (window.Sk.builtinFiles === undefined || window.Sk.builtinFiles["files"][x] === undefined)
-          throw "File not found: '" + x + "'";
-      return window.Sk.builtinFiles["files"][x];
-    }
-
-    window.Sk.pre = "output";
-    window.Sk.configure({ output: outf, read: builtinRead });
-
-    const myPromise = window.Sk.misceval.asyncToPromise(function() {
-        return window.Sk.importMainWithBody("<stdin>", false, generatedPython, true);
-    });
-
-    myPromise.then(function() {
-        setConsoleOutput(outputBuffer + "\n> Program finished.");
-    }, function(err) {
-        setConsoleOutput(outputBuffer + "\n> Error: " + err.toString());
-    });
-  };
+        const data = await response.json();
+        
+        if (data.status === "success") {
+          setConsoleOutput(data.output + "\n> Program finished.");
+        } else {
+          setConsoleOutput("> Error: " + data.output);
+        }
+      } catch (error) {
+        console.error("Backend Error:", error);
+        setConsoleOutput("> Error: Could not connect to Python server.");
+      }
+    };
 
   const handleTemplateSelect = async (e) => {
     const templatePath = e.target.value;
@@ -169,6 +163,7 @@ export default function App() {
               
               <optgroup label="Sort Algo">
                 <option value="sort/bubble_sort">Bubble Sort - O(n²)</option>
+                <option value="sort/insertion_sort">Insertion Sort - O(n²)</option>
                 <option value="sort/selection_sort">Selection Sort - O(n²)</option>
                 <option value="sort/merge_sort">Merge Sort - O(n log n)</option>
               </optgroup>
