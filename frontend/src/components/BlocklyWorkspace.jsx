@@ -1,4 +1,3 @@
-// src/components/BlocklyWorkspace.jsx
 import * as Blockly from "blockly";
 import "blockly/blocks";
 import * as En from "blockly/msg/en";
@@ -6,17 +5,16 @@ import { pythonGenerator } from "blockly/python";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
 // --- STABLE PLUGIN IMPORTS ---
-import { KeyboardNavigation } from "@blockly/keyboard-navigation";
 import { Modal } from "@blockly/plugin-modal";
 import { WorkspaceSearch } from "@blockly/plugin-workspace-search";
 import { shadowBlockConversionChangeListener } from "@blockly/shadow-block-converter";
 import DarkTheme from "@blockly/theme-dark";
 import ModernTheme from "@blockly/theme-modern";
 import "@blockly/toolbox-search";
+import { Backpack } from "@blockly/workspace-backpack";
+import { ContentHighlight } from "@blockly/workspace-content-highlight";
 import { PositionedMinimap } from "@blockly/workspace-minimap";
 import { ZoomToFitControl } from "@blockly/zoom-to-fit";
-import * as LexicalVariables from "@mit-app-inventor/blockly-block-lexical-variables";
-import { Multiselect } from "@mit-app-inventor/blockly-plugin-workspace-multiselect";
 
 Blockly.setLocale(En);
 
@@ -57,15 +55,11 @@ if (Blockly.common && Blockly.common.defineBlocksWithJsonArray) {
   Blockly.defineBlocksWithJsonArray(customBlocks);
 }
 
-// --- TOOLBOX CONFIGURATION ---
+// --- 2. TOOLBOX CONFIGURATION ---
 const toolbox = {
   kind: "categoryToolbox",
   contents: [
-    {
-      kind: "search",
-      name: "Search",
-      contents: [],
-    },
+    { kind: "search", name: "Search", contents: [] },
     {
       kind: "category",
       name: "Logic",
@@ -159,9 +153,6 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
   const blocklyDiv = useRef(null);
   const workspace = useRef(null);
   const onChangeRef = useRef(onChange);
-  
-  // 🌟 NEW: Create a reference to safely hold the Multiselect Class instance
-  const multiselectRef = useRef(null);
 
   // --- EXPOSE FUNCTIONS ---
   useImperativeHandle(ref, () => ({
@@ -170,17 +161,13 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
     },
     loadTemplate: (json) => {
       if (workspace.current) {
-        workspace.current.clear(); 
+        workspace.current.clear();
         Blockly.serialization.workspaces.load(json, workspace.current);
       }
     },
     setTheme: (themeName) => {
       if (workspace.current) {
-        if (themeName === 'dark') {
-          workspace.current.setTheme(DarkTheme);
-        } else {
-          workspace.current.setTheme(ModernTheme);
-        }
+        workspace.current.setTheme(themeName === 'dark' ? DarkTheme : ModernTheme);
       }
     }
   }));
@@ -189,20 +176,14 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
     onChangeRef.current = onChange;
   }, [onChange]);
 
-useEffect(() => {
+  useEffect(() => {
     if (workspace.current) return;
 
     if (blocklyDiv.current) {
-      
-// 🌟 FIX: Clear all global shortcuts before injecting to prevent Strict Mode crashes
-      const registry = Blockly.ShortcutRegistry.registry.getRegistry();
-      const shortcutsToClear = ['startSearch', 'toolbox', 'copy', 'paste'];
-      
-      shortcutsToClear.forEach(shortcut => {
-        if (registry[shortcut]) {
-          Blockly.ShortcutRegistry.registry.unregister(shortcut);
-        }
-      });
+      // Clear specific shortcut to prevent Strict Mode double-registration crash
+      if (Blockly.ShortcutRegistry.registry.getRegistry()['startSearch']) {
+        Blockly.ShortcutRegistry.registry.unregister('startSearch');
+      }
 
       // INJECT WORKSPACE
       workspace.current = Blockly.inject(blocklyDiv.current, {
@@ -216,43 +197,18 @@ useEffect(() => {
 
       // --- INITIALIZE STABLE PLUGINS ---
       try {
-        const workspaceSearch = new WorkspaceSearch(workspace.current);
-        workspaceSearch.init();
-      } catch (e) { /* Ignore duplicate shortcut errors */ }
-      
-      const zoomToFit = new ZoomToFitControl(workspace.current);
-      zoomToFit.init();
+        new WorkspaceSearch(workspace.current).init();
+        new ZoomToFitControl(workspace.current).init();
+        new PositionedMinimap(workspace.current).init();
+        new Modal(workspace.current).init();
+        new Backpack(workspace.current).init();
+        new ContentHighlight(workspace.current).init();
+        workspace.current.addChangeListener(shadowBlockConversionChangeListener);
+      } catch (e) {
+        console.warn("Plugin init skipped:", e.message);
+      }
 
-      
-      
-      const minimap = new PositionedMinimap(workspace.current);
-      minimap.init();
-      
-      const modal = new Modal(workspace.current);
-      modal.init();
-
-// 🌟 FIX 1: Initialize Keyboard Navigation FIRST
-      const nav = new KeyboardNavigation(workspace.current);
-      nav.addWorkspace(workspace.current);
-
-      // 🌟 FIX 2: Initialize Multiselect SECOND
-      multiselectRef.current = new Multiselect(workspace.current);
-      multiselectRef.current.init({
-        multiselectIcon: {
-          hideIcon: false,
-          weight: 3,
-          edge: 'right',
-        },
-        multiselectCopyPaste: {
-          crossTab: true,
-          menu: true,
-        }
-      });
-
-      LexicalVariables.init(workspace.current);
-      workspace.current.addChangeListener(shadowBlockConversionChangeListener);
-
-      // --- GENERATORS ---
+      // --- PYTHON GENERATORS ---
       pythonGenerator.forBlock['comment_block'] = function(block) {
         const text = block.getFieldValue('TEXT');
         return `# ${text}\n`;
@@ -269,88 +225,23 @@ useEffect(() => {
         return `${variable} ${symbol} ${value}\n`;
       };
 
+      // Custom Range Loop
       pythonGenerator.forBlock['controls_for'] = function(block) {
         const variable = pythonGenerator.getVariableName(block.getFieldValue('VAR'));
         const from = pythonGenerator.valueToCode(block, 'FROM', pythonGenerator.ORDER_NONE) || '0';
         const to = pythonGenerator.valueToCode(block, 'TO', pythonGenerator.ORDER_ADDITIVE) || '0';
         const step = pythonGenerator.valueToCode(block, 'BY', pythonGenerator.ORDER_NONE) || '1';
-
-        let rangeCode;
-        if (step === '1') {
-            if (from === '0') rangeCode = `range(${to})`; 
-            else rangeCode = `range(${from}, ${to})`; 
-        } else {
-            rangeCode = `range(${from}, ${to}, ${step})`;
-        }
-
+        let rangeCode = (step === '1' && from === '0') ? `range(${to})` : `range(${from}, ${to}, ${step})`;
         let branch = pythonGenerator.statementToCode(block, 'DO') || pythonGenerator.PASS;
         return `for ${variable} in ${rangeCode}:\n${branch}`;
       };
 
-      pythonGenerator.forBlock['lists_getIndex'] = function(block) {
-        const mode = block.getFieldValue('MODE') || 'GET';
-        const where = block.getFieldValue('WHERE') || 'FROM_START';
-        const list = pythonGenerator.valueToCode(block, 'VALUE', pythonGenerator.ORDER_MEMBER) || '[]';
-        if (where === 'FROM_START') {
-            const at = pythonGenerator.valueToCode(block, 'AT', pythonGenerator.ORDER_NONE) || '0';
-            if (mode === 'GET') return [`${list}[${at}]`, pythonGenerator.ORDER_MEMBER];
-            else if (mode === 'REMOVE') return `${list}.pop(${at})\n`;
-        }
-        return [`${list}[0]`, pythonGenerator.ORDER_MEMBER]; 
-      };
-
-      pythonGenerator.forBlock['lists_setIndex'] = function(block) {
-        const list = pythonGenerator.valueToCode(block, 'LIST', pythonGenerator.ORDER_MEMBER) || 'list';
-        const mode = block.getFieldValue('MODE') || 'SET';
-        const where = block.getFieldValue('WHERE') || 'FROM_START';
-        const value = pythonGenerator.valueToCode(block, 'TO', pythonGenerator.ORDER_NONE) || 'None';
-        if (where === 'FROM_START') {
-            const at = pythonGenerator.valueToCode(block, 'AT', pythonGenerator.ORDER_NONE) || '0';
-            if (mode === 'SET') return `${list}[${at}] = ${value}\n`;
-            else if (mode === 'INSERT') return `${list}.insert(${at}, ${value})\n`;
-        }
-        return `${list}[0] = ${value}\n`;
-      };
-
-      pythonGenerator.finish = function(code) {
-        const definitions = Object.values(pythonGenerator.definitions_);
-        const imports = [];
-        const funcs = [];
-
-        definitions.forEach(def => {
-            if (def.includes('import')) imports.push(def);
-            else if (def.trim().startsWith('def ')) funcs.push(def);
-        });
-
-        pythonGenerator.definitions_ = Object.create(null);
-        pythonGenerator.functionNames_ = Object.create(null);
-
-        const allDefs = imports.join('\n') + '\n\n' + funcs.join('\n\n');
-        return allDefs.replace(/\n\n+/g, '\n\n').trim() + '\n\n' + code;
-      };
-
-      const procedureGenerator = function(block) {
-        const funcName = pythonGenerator.getProcedureName(block.getFieldValue('NAME'));
-        let branch = pythonGenerator.statementToCode(block, 'STACK');
-        let returnValue = '';
-        if (block.type === 'procedures_defreturn') {
-            returnValue = pythonGenerator.valueToCode(block, 'RETURN', pythonGenerator.ORDER_NONE) || '';
-            if (returnValue) returnValue = pythonGenerator.INDENT + 'return ' + returnValue + '\n';
-        }
-        const args = [];
-        const variables = block.getVars();
-        for (let i = 0; i < variables.length; i++) {
-            args[i] = pythonGenerator.getVariableName(variables[i]);
-        }
-        if (!branch && !returnValue) branch = pythonGenerator.PASS;
-        return 'def ' + funcName + '(' + args.join(', ') + '):\n' + branch + returnValue;
-      };
-
-      pythonGenerator.forBlock['procedures_defnoreturn'] = procedureGenerator;
-      pythonGenerator.forBlock['procedures_defreturn'] = procedureGenerator;
-
+      // Change listener for auto-code generation
       workspace.current.addChangeListener((event) => {
-        if (event.type === Blockly.Events.BLOCK_CREATE || event.type === Blockly.Events.BLOCK_DELETE || event.type === Blockly.Events.BLOCK_CHANGE || event.type === Blockly.Events.BLOCK_MOVE) {
+        if (event.type === Blockly.Events.BLOCK_CREATE || 
+            event.type === Blockly.Events.BLOCK_DELETE || 
+            event.type === Blockly.Events.BLOCK_CHANGE || 
+            event.type === Blockly.Events.BLOCK_MOVE) {
           const json = Blockly.serialization.workspaces.save(workspace.current);
           const code = pythonGenerator.workspaceToCode(workspace.current);
           if (onChangeRef.current) onChangeRef.current(json, code);
@@ -365,17 +256,11 @@ useEffect(() => {
     }
 
     return () => {
-      // 🌟 SAFELY DISPOSE MULTISELECT
-      if (multiselectRef.current) {
-        multiselectRef.current.dispose();
-        multiselectRef.current = null;
-      }
-      
       if (workspace.current) {
-        workspace.current.dispose(); 
+        workspace.current.dispose();
         workspace.current = null;    
       }
-      if (blocklyDiv.current && blocklyDiv.current.resizeObserver) {
+      if (blocklyDiv.current?.resizeObserver) {
         blocklyDiv.current.resizeObserver.disconnect();
       }
     };
