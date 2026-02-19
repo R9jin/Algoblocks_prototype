@@ -16,10 +16,10 @@ export default function App() {
     setBlocklyJson(json);
     
     try {
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: pythonCode }),
+      const response = await fetch('/api/analyze', { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: generatedCode })
       });
 
       const data = await response.json();
