@@ -165,9 +165,16 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
     },
     loadTemplate: (json) => {
       if (workspace.current) {
+        // 1. TURN OFF EVENTS: Stops the 30+ fetch requests
+        Blockly.Events.disable(); 
+        
         workspace.current.clear();
         Blockly.serialization.workspaces.load(json, workspace.current);
-        // Return the new code so App.jsx can analyze it immediately
+        
+        // 2. TURN EVENTS BACK ON
+        Blockly.Events.enable(); 
+
+        // 3. Return the fully formed, complete code
         return pythonGenerator.workspaceToCode(workspace.current);
       }
       return "";
@@ -235,14 +242,16 @@ const BlocklyWorkspace = forwardRef(({ onChange }, ref) => {
         return `${variable} ${symbol} ${value}\n`;
       };
 
-      // Custom Range Loop
       pythonGenerator.forBlock['controls_for'] = function(block) {
         const variable = pythonGenerator.getVariableName(block.getFieldValue('VAR'));
         const from = pythonGenerator.valueToCode(block, 'FROM', pythonGenerator.ORDER_NONE) || '0';
         const to = pythonGenerator.valueToCode(block, 'TO', pythonGenerator.ORDER_ADDITIVE) || '0';
         const step = pythonGenerator.valueToCode(block, 'BY', pythonGenerator.ORDER_NONE) || '1';
         let rangeCode = (step === '1' && from === '0') ? `range(${to})` : `range(${from}, ${to}, ${step})`;
-        let branch = pythonGenerator.statementToCode(block, 'DO') || pythonGenerator.PASS;
+        
+        // FIX: Hardcode '  pass\n' here to prevent python syntax errors
+        let branch = pythonGenerator.statementToCode(block, 'DO') || '  pass\n';
+        
         return `for ${variable} in ${rangeCode}:\n${branch}`;
       };
 
