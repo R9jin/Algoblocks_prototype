@@ -1,28 +1,15 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
-from sqlalchemy.dialects.postgresql import JSONB  # <--- THE SUPERPOWER
-from sqlalchemy.orm import relationship
+from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any
 from datetime import datetime
-from database import Base
 
-class User(Base):
-    __tablename__ = "users"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-    
-    projects = relationship("Project", back_populates="owner")
+# Pydantic models define the structure of the data we expect from the React frontend
 
-class Project(Base):
-    __tablename__ = "projects"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # 🌟 THIS IS KEY: We store the entire Blockly structure here
-    # This allows us to search: "Find all projects that use 'loops'"
-    data = Column(JSONB) 
-    
-    owner_id = Column(Integer, ForeignKey("users.id"))
-    owner = relationship("User", back_populates="projects")
+class ProjectModel(BaseModel):
+    title: str
+    data: Dict[str, Any] = Field(default_factory=dict) # This will hold your Blockly JSON tree
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    owner_id: Optional[str] = None
+
+class UserModel(BaseModel):
+    username: str
+    hashed_password: str
